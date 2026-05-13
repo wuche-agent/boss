@@ -1,8 +1,8 @@
 import { getSession, setSession, clearSession, Session } from '../src/conversation';
 
 // Mock ioredis
+const store: Record<string, string> = {};
 jest.mock('ioredis', () => {
-  const store: Record<string, string> = {};
   return jest.fn().mockImplementation(() => ({
     get: jest.fn(async (key: string) => store[key] ?? null),
     set: jest.fn(async (key: string, value: string, _ex: string, _ttl: number) => {
@@ -13,6 +13,7 @@ jest.mock('ioredis', () => {
 });
 
 describe('conversation', () => {
+  beforeEach(() => { Object.keys(store).forEach(k => delete store[k]); });
   it('returns null for unknown user', async () => {
     const session = await getSession('user_unknown');
     expect(session).toBeNull();
