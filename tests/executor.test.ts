@@ -2,20 +2,16 @@ import { executeTask } from '../src/executor';
 import * as message from '../src/dingtalk/message';
 import * as todo from '../src/dingtalk/todo';
 import * as bitable from '../src/dingtalk/bitable';
+import * as user from '../src/dingtalk/user';
 
 jest.mock('../src/dingtalk/message');
 jest.mock('../src/dingtalk/todo');
 jest.mock('../src/dingtalk/bitable');
+jest.mock('../src/dingtalk/user');
 
-// store must be declared outside the factory so it's accessible in tests
-// but jest.mock is hoisted, so we use a module-level object literal
-const store: Record<string, string> = {};
-jest.mock('ioredis', () => {
-  // closure over the module-level `store` doesn't work due to hoisting;
-  // instead we use a fresh object captured per-instantiation
-  return jest.fn().mockImplementation(() => ({
+jest.mock('ioredis', () =>
+  jest.fn().mockImplementation(() => ({
     get: jest.fn(async (key: string) => {
-      // access the test store via global to work around hoisting
       const s = (global as Record<string, unknown>).__ioredisStore as Record<string, string> | undefined;
       return s?.[key] ?? null;
     }),
@@ -27,21 +23,22 @@ jest.mock('ioredis', () => {
       const s = (global as Record<string, unknown>).__ioredisStore as Record<string, string> | undefined;
       if (s) delete s[key];
     }),
-  }));
-});
+  }))
+);
 
 const mockedMessage = message as jest.Mocked<typeof message>;
 const mockedTodo = todo as jest.Mocked<typeof todo>;
 const mockedBitable = bitable as jest.Mocked<typeof bitable>;
+const mockedUser = user as jest.Mocked<typeof user>;
 
 describe('executeTask', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // wire up the store for this test run
-    const s: Record<string, string> = {};
-    (global as Record<string, unknown>).__ioredisStore = s;
+    (global as Record<string, unknown>).__ioredisStore = {};
+    mockedUser.searchUserByName.mockResolvedValue('staff_789');
     mockedTodo.createTodo.mockResolvedValue('todo_abc');
     mockedBitable.insertTaskRecord.mockResolvedValue('row_xyz');
+    mockedMessage.sendCard.mockResolvedValue(undefined);
     mockedMessage.sendMessage.mockResolvedValue(undefined);
   });
 
@@ -49,26 +46,32 @@ describe('executeTask', () => {
     delete (global as Record<string, unknown>).__ioredisStore;
   });
 
-  it('sends message, creates todo, inserts bitable row, and stores redis mapping', async () => {
+  it('resolves staffId, sends card, creates todo, inserts bitable, stores redis, confirms boss', async () => {
     await executeTask({
       bossUserId: 'boss_001',
       bossName: '老板',
-      assigneeUserId: 'user_456',
       assigneeName: '小王',
+      goal: '提升销售效率',
       detail: '完成Q2报告',
       deadline: '2026-05-20',
       summary: '小王需在5月20日前完成Q2报告',
     });
 
-    expect(mockedMessage.sendMessage).toHaveBeenCalledWith(
-      'user_456',
-      expect.stringContaining('完成Q2报告')
-    );
+    expect(mockedUser.searchUserByName).toHaveBeenCalledWith('小王');
+
+    expect(mockedMessage.sendCard).toHaveBeenCalledWith('staff_789', {
+      goal: '提升销售效率',
+      detail: '完成Q2报告',
+      deadline: '2026-05-20',
+      bossName: '老板',
+    });
+
     expect(mockedTodo.createTodo).toHaveBeenCalledWith(
-      expect.objectContaining({ assigneeUserId: 'user_456', subject: '完成Q2报告' })
+      expect.objectContaining({ assigneeUserId: 'staff_789', subject: '完成Q2报告' })
     );
+
     expect(mockedBitable.insertTaskRecord).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: 'todo_abc', detail: '完成Q2报告' })
+      expect.objectContaining({ taskId: 'todo_abc', assigneeUserId: 'staff_789' })
     );
 
     const redisStore = (global as Record<string, unknown>).__ioredisStore as Record<string, string>;
@@ -80,5 +83,21 @@ describe('executeTask', () => {
       'boss_001',
       expect.stringContaining('已创建')
     );
+  });
+
+  it('throws and does NOT send card if searchUserByName throws', async () => {
+    mockedUser.searchUserByName.mockRejectedValue(new Error('未找到用户'));
+    await expect(
+      executeTask({
+        bossUserId: 'boss_001',
+        bossName: '老板',
+        assigneeName: '不存在的人',
+        goal: '目标',
+        detail: '内容',
+        deadline: '2026-05-20',
+        summary: '摘要',
+      })
+    ).rejects.toThrow('未找到用户');
+    expect(mockedMessage.sendCard).not.toHaveBeenCalled();
   });
 });
