@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { sendMessage } from '../../src/dingtalk/message';
+import { sendMessage, sendCard, TaskCard } from '../../src/dingtalk/message';
 import * as client from '../../src/dingtalk/client';
 
 jest.mock('axios');
@@ -22,6 +22,36 @@ describe('sendMessage', () => {
         userIds: ['user_123'],
         msgKey: 'sampleText',
         msgParam: JSON.stringify({ content: '任务已创建' }),
+      },
+      { headers: { 'x-acs-dingtalk-access-token': 'mock_token' } }
+    );
+  });
+});
+
+describe('sendCard', () => {
+  beforeEach(() => {
+    mockedClient.getAccessToken.mockResolvedValue('mock_token');
+    mockedAxios.post.mockResolvedValue({ data: {} });
+  });
+
+  it('sends a markdown card to a single user', async () => {
+    const card: TaskCard = {
+      goal: '提升销售效率',
+      detail: '完成Q2季度销售报告',
+      deadline: '2026-05-18',
+      bossName: '武彻',
+    };
+    await sendCard('user_123', card);
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      'https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend',
+      {
+        robotCode: process.env.DINGTALK_ROBOT_CODE,
+        userIds: ['user_123'],
+        msgKey: 'sampleMarkdown',
+        msgParam: JSON.stringify({
+          title: '你有一个新任务',
+          text: '### 你有一个新任务 📋\n**目标：** 提升销售效率\n**内容：** 完成Q2季度销售报告\n**截止日期：** 2026-05-18\n**来自：** 武彻',
+        }),
       },
       { headers: { 'x-acs-dingtalk-access-token': 'mock_token' } }
     );
