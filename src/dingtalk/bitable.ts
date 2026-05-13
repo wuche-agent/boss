@@ -1,7 +1,15 @@
 import axios from 'axios';
 import { getAccessToken } from './client';
 
+// NOTE: Verify this base path against your DingTalk workspace's Bitable API docs
+// before going to production — the exact path varies by workspace configuration.
 const BASE = 'https://api.dingtalk.com/v1.0/doc/workspaces';
+
+function getEnvOrThrow(name: string): string {
+  const val = process.env[name];
+  if (!val) throw new Error(`Missing required env var: ${name}`);
+  return val;
+}
 
 export interface TaskRecord {
   detail: string;
@@ -14,8 +22,8 @@ export interface TaskRecord {
 
 export async function insertTaskRecord(record: TaskRecord): Promise<string> {
   const token = await getAccessToken();
-  const appToken = process.env.BITABLE_APP_TOKEN!;
-  const tableId = process.env.BITABLE_TABLE_ID!;
+  const appToken = getEnvOrThrow('BITABLE_APP_TOKEN');
+  const tableId = getEnvOrThrow('BITABLE_TABLE_ID');
 
   const response = await axios.post(
     `${BASE}/${appToken}/tables/${tableId}/records`,
@@ -39,8 +47,8 @@ export async function insertTaskRecord(record: TaskRecord): Promise<string> {
 
 export async function updateTaskStatus(rowId: string, status: string): Promise<void> {
   const token = await getAccessToken();
-  const appToken = process.env.BITABLE_APP_TOKEN!;
-  const tableId = process.env.BITABLE_TABLE_ID!;
+  const appToken = getEnvOrThrow('BITABLE_APP_TOKEN');
+  const tableId = getEnvOrThrow('BITABLE_TABLE_ID');
 
   await axios.put(
     `${BASE}/${appToken}/tables/${tableId}/records/${rowId}`,

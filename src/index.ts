@@ -69,7 +69,7 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
     await setSession(userId, updated);
     await sendMessage(
       userId,
-      `好的，负责人是${text}。截止日期是？（格式：YYYY-MM-DD）`
+      `好的，负责人是${text}。截止日期是？（格式：YYYY-MM-DD）\n注意：如果输入的是姓名而非钉钉 userId，请确认对方的钉钉 userId 以便系统正确指派。`
     );
     return;
   }
@@ -105,16 +105,21 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
     if (lowerText.includes('确认') || lowerText === 'ok') {
       const summary = await generateTaskSummary(session);
       const senderNick = event.senderNick ?? '老板';
-      await executeTask({
-        bossUserId: userId,
-        bossName: senderNick,
-        assigneeUserId: session.assignee_user_id ?? '',
-        assigneeName: session.assignee_name ?? '',
-        detail: session.detail ?? '',
-        deadline: session.deadline ?? '',
-        summary,
-      });
-      await clearSession(userId);
+      try {
+        await executeTask({
+          bossUserId: userId,
+          bossName: senderNick,
+          assigneeUserId: session.assignee_user_id ?? '',
+          assigneeName: session.assignee_name ?? '',
+          detail: session.detail ?? '',
+          deadline: session.deadline ?? '',
+          summary,
+        });
+        await clearSession(userId);
+      } catch (err) {
+        console.error('executeTask failed:', err);
+        await sendMessage(userId, '❌ 任务创建失败，请稍后重试。回复"确认"可再次尝试。');
+      }
     } else {
       // Restart from awaiting_assignee
       await setSession(userId, {

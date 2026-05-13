@@ -1,8 +1,6 @@
-import Redis from 'ioredis';
+import { redis } from '../redis';
 import { updateTaskStatus } from '../dingtalk/bitable';
 import { sendMessage } from '../dingtalk/message';
-
-const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
 interface TodoRecord {
   rowId: string;

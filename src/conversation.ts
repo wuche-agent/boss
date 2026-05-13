@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { redis } from './redis';
 
 export type SessionStep =
   | 'awaiting_assignee'
@@ -16,8 +16,7 @@ export interface Session {
   detail?: string;
 }
 
-const SESSION_TTL = 30 * 60; // 30 minutes in seconds
-const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+const SESSION_TTL = 30 * 60;
 
 export async function getSession(userId: string): Promise<Session | null> {
   const raw = await redis.get(`session:${userId}`);

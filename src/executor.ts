@@ -1,9 +1,7 @@
-import Redis from 'ioredis';
+import { redis } from './redis';
 import { sendMessage } from './dingtalk/message';
 import { createTodo } from './dingtalk/todo';
 import { insertTaskRecord } from './dingtalk/bitable';
-
-const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
 export interface TaskParams {
   bossUserId: string;
@@ -40,10 +38,12 @@ export async function executeTask(params: TaskParams): Promise<void> {
     bossUserId: params.bossUserId,
   });
 
-  // 4) Store mapping in Redis
+  // 4) Store mapping in Redis (TTL: 30 days)
   await redis.set(
     `todo:${taskId}`,
-    JSON.stringify({ rowId, bossUserId: params.bossUserId, summary: params.summary })
+    JSON.stringify({ rowId, bossUserId: params.bossUserId, summary: params.summary }),
+    'EX',
+    30 * 24 * 60 * 60
   );
 
   // 5) Confirm to boss
