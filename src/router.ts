@@ -7,7 +7,8 @@ interface MessageEvent {
 
 export function isAuthorizedMessage(event: MessageEvent): boolean {
   const whitelist = (process.env.BOSS_USER_IDS ?? '').split(',').filter(Boolean);
-  if (!whitelist.includes(event.senderId ?? '')) return false;
+  // Empty whitelist = open to all
+  if (whitelist.length > 0 && !whitelist.includes(event.senderId ?? '')) return false;
   if (event.conversationType === '2' && !event.isInAtList) return false;
   return true;
 }
