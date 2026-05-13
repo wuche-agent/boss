@@ -1,10 +1,10 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import { DWClient, DWClientDownStream, EventAck, EventAckData, TOPIC_ROBOT } from 'dingtalk-stream';
+import { DWClient, DWClientDownStream, EventAck, TOPIC_ROBOT } from 'dingtalk-stream';
 import { isAuthorizedMessage, extractMessageText } from './router';
 import { getSession, setSession, clearSession, Session } from './conversation';
-import { generateTaskSummary } from './llm';
+import { conductConversation } from './llm';
 import { executeTask } from './executor';
 import { handleTodoComplete } from './events/todoComplete';
 import { sendMessage } from './dingtalk/message';
@@ -16,130 +16,101 @@ const client = new DWClient({
   clientSecret: process.env.DINGTALK_APP_SECRET ?? '',
 });
 
-client.registerAllEventListener((msg: DWClientDownStream): EventAckData => {
-  const topic = msg.headers.topic;
+client.registerCallbackListener(TOPIC_ROBOT, (msg: DWClientDownStream) => {
+  client.socketCallBackResponse(msg.headers.messageId, { status: EventAck.SUCCESS });
+  handleRobotMessage(msg).catch(console.error);
+});
 
-  if (topic === TOPIC_ROBOT) {
-    handleRobotMessage(msg).catch(console.error);
-  } else if (topic === TOPIC_TODO_FINISH) {
+client.registerAllEventListener((msg: DWClientDownStream) => {
+  if (msg.headers.topic === TOPIC_TODO_FINISH) {
     const event = JSON.parse(msg.data) as Record<string, unknown>;
     handleTodoComplete(event).catch(console.error);
   }
-
   return { status: EventAck.SUCCESS };
 });
 
+interface RobotMessageEvent {
+  senderId?: string;
+  senderStaffId?: string;
+  senderNick?: string;
+  conversationType?: string;
+  isInAtList?: boolean;
+  text?: { content: string };
+}
+
 async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
-  const event = JSON.parse(msg.data) as {
-    senderId?: string;
-    senderNick?: string;
-    conversationType?: string;
-    isInAtList?: boolean;
-    text?: { content: string };
-  };
+  const event = JSON.parse(msg.data) as RobotMessageEvent;
+  const userId = event.senderStaffId ?? event.senderId ?? '';
+  console.log(`[robot] staffId=${event.senderStaffId} nick=${event.senderNick} text=${event.text?.content}`);
 
-  if (!isAuthorizedMessage(event)) return;
-
-  const userId = event.senderId ?? '';
-  if (!userId) return;
+  if (!isAuthorizedMessage(event) || !userId) return;
 
   const text = extractMessageText(event);
-  const session = await getSession(userId);
+  const session: Session = (await getSession(userId)) ?? { step: 'clarifying', history: [] };
 
-  if (!session) {
-    // No session — start new conversation flow
-    await setSession(userId, {
-      step: 'awaiting_assignee',
-      raw_intent: text,
-    });
-    await sendMessage(
-      userId,
-      '收到！请问这个任务由谁负责？（请告诉我对方的姓名或钉钉账号）'
-    );
-    return;
-  }
-
-  if (session.step === 'awaiting_assignee') {
-    const updated: Session = {
-      ...session,
-      assignee_name: text,
-      assignee_user_id: text,
-      step: 'awaiting_deadline',
-    };
-    await setSession(userId, updated);
-    await sendMessage(
-      userId,
-      `好的，负责人是${text}。截止日期是？（格式：YYYY-MM-DD）\n注意：如果输入的是姓名而非钉钉 userId，请确认对方的钉钉 userId 以便系统正确指派。`
-    );
-    return;
-  }
-
-  if (session.step === 'awaiting_deadline') {
-    const updated: Session = {
-      ...session,
-      deadline: text,
-      step: 'awaiting_detail',
-    };
-    await setSession(userId, updated);
-    await sendMessage(userId, `截止 ${text}，具体要做什么？`);
-    return;
-  }
-
-  if (session.step === 'awaiting_detail') {
-    const updated: Session = {
-      ...session,
-      detail: text,
-      step: 'awaiting_confirm',
-    };
-    await setSession(userId, updated);
-    const summary = await generateTaskSummary(updated);
-    await sendMessage(
-      userId,
-      `请确认以下任务信息：\n${summary}\n\n回复"确认"或"ok"完成创建，或重新描述任务。`
-    );
-    return;
-  }
-
-  if (session.step === 'awaiting_confirm') {
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('确认') || lowerText === 'ok') {
-      const summary = await generateTaskSummary(session);
-      const senderNick = event.senderNick ?? '老板';
+  // Awaiting confirmation of a finalized task
+  if (session.step === 'awaiting_confirm' && session.pending_task) {
+    const lower = text.toLowerCase();
+    if (lower.includes('确认') || lower === 'ok') {
+      const task = session.pending_task;
       try {
         await executeTask({
           bossUserId: userId,
-          bossName: senderNick,
-          assigneeUserId: session.assignee_user_id ?? '',
-          assigneeName: session.assignee_name ?? '',
-          detail: session.detail ?? '',
-          deadline: session.deadline ?? '',
-          summary,
+          bossName: event.senderNick ?? '老板',
+          assigneeName: task.assignee_name,
+          goal: task.goal,
+          detail: task.detail,
+          deadline: task.deadline,
+          summary: task.summary,
         });
         await clearSession(userId);
       } catch (err) {
         console.error('executeTask failed:', err);
-        await sendMessage(userId, '❌ 任务创建失败，请稍后重试。回复"确认"可再次尝试。');
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('未找到用户')) {
+          // User not found — ask boss for the real name and re-enter clarifying
+          const notFoundMsg = `❌ ${msg}\n请告诉我TA在钉钉通讯录里的真实姓名，我来更新任务。`;
+          const updatedHistory = [
+            ...session.history,
+            { role: 'assistant' as const, content: notFoundMsg },
+          ];
+          await setSession(userId, { step: 'clarifying', history: updatedHistory });
+          await sendMessage(userId, notFoundMsg);
+        } else {
+          await sendMessage(userId, '❌ 任务创建失败，请稍后重试。回复"确认"可再次尝试。');
+        }
       }
-    } else {
-      // Restart from awaiting_assignee
-      await setSession(userId, {
-        step: 'awaiting_assignee',
-        raw_intent: text,
-      });
-      await sendMessage(
-        userId,
-        '好的，让我们重新开始。请问这个任务由谁负责？（请告诉我对方的姓名或钉钉账号）'
-      );
+      return;
     }
-    return;
+
+    if (lower.includes('取消') || lower.includes('算了') || lower.includes('不了')) {
+      await clearSession(userId);
+      await sendMessage(userId, '好的，任务已取消。有新想法随时找我。');
+      return;
+    }
+
+    // Boss wants to adjust — continue conversation
   }
+
+  // Drive conversation with LLM
+  const updatedHistory = [...session.history, { role: 'user' as const, content: text }];
+  console.log(`[llm] calling conductConversation, history length=${updatedHistory.length}`);
+  const { reply, task } = await conductConversation(updatedHistory);
+  console.log(`[llm] reply=${reply.slice(0, 80)} task=${task ? JSON.stringify(task) : 'none'}`);
+
+  const newSession: Session = {
+    step: task ? 'awaiting_confirm' : 'clarifying',
+    history: [...updatedHistory, { role: 'assistant' as const, content: reply }],
+    pending_task: task ?? session.pending_task,
+  };
+
+  await setSession(userId, newSession);
+  await sendMessage(userId, reply);
 }
 
 client
   .connect()
-  .then(() => {
-    console.log('DingTalk Stream client started successfully');
-  })
+  .then(() => console.log('DingTalk Stream client started successfully'))
   .catch((err: Error) => {
     console.error('Failed to start DingTalk Stream client:', err);
     process.exit(1);

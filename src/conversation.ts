@@ -1,19 +1,24 @@
 import { redis } from './redis';
 
-export type SessionStep =
-  | 'awaiting_assignee'
-  | 'awaiting_deadline'
-  | 'awaiting_detail'
-  | 'awaiting_confirm'
-  | 'done';
+export type SessionStep = 'clarifying' | 'awaiting_confirm' | 'done';
+
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface PendingTask {
+  goal: string;
+  assignee_name: string;
+  deadline: string;
+  detail: string;
+  summary: string;
+}
 
 export interface Session {
   step: SessionStep;
-  raw_intent: string;
-  assignee_user_id?: string;
-  assignee_name?: string;
-  deadline?: string;
-  detail?: string;
+  history: ConversationTurn[];
+  pending_task?: PendingTask;
 }
 
 const SESSION_TTL = 30 * 60;

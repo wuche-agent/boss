@@ -1,9 +1,7 @@
 import { redis } from '../redis';
-import { updateTaskStatus } from '../dingtalk/bitable';
 import { sendMessage } from '../dingtalk/message';
 
 interface TodoRecord {
-  rowId: string;
   bossUserId: string;
   summary: string;
 }
@@ -15,9 +13,18 @@ export async function handleTodoComplete(event: Record<string, unknown>): Promis
   const raw = await redis.get(`todo:${taskId}`);
   if (!raw) return;
 
-  const { rowId, bossUserId, summary } = JSON.parse(raw) as TodoRecord;
+  const { bossUserId, summary } = JSON.parse(raw) as TodoRecord;
   const finisherName = (event.finisherName ?? '被指派人') as string;
 
-  await updateTaskStatus(rowId, '已完成');
+  // Update task record status in Redis
+  const taskRaw = await redis.get(`task:${taskId}`);
+  if (taskRaw) {
+    const task = JSON.parse(taskRaw);
+    task.status = '已完成';
+    task.completedAt = new Date().toISOString();
+    task.completedBy = finisherName;
+    await redis.set(`task:${taskId}`, JSON.stringify(task), 'KEEPTTL');
+  }
+
   await sendMessage(bossUserId, `✅ 任务已完成：${summary}\n完成人：${finisherName}`);
 }
