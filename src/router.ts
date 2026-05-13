@@ -1,0 +1,17 @@
+interface MessageEvent {
+  senderId?: string;
+  conversationType?: string;
+  isInAtList?: boolean;
+  text?: { content: string };
+}
+
+export function isAuthorizedMessage(event: MessageEvent): boolean {
+  const whitelist = (process.env.BOSS_USER_IDS ?? '').split(',').filter(Boolean);
+  if (!whitelist.includes(event.senderId ?? '')) return false;
+  if (event.conversationType === '2' && !event.isInAtList) return false;
+  return true;
+}
+
+export function extractMessageText(event: MessageEvent): string {
+  return (event.text?.content ?? '').trim();
+}
