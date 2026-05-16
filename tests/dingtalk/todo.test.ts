@@ -15,18 +15,18 @@ describe('createTodo', () => {
 
   it('creates a todo and returns the taskId', async () => {
     const taskId = await createTodo({
-      assigneeUserId: 'user_456',
-      creatorUserId: 'boss_001',
+      assigneeUnionId: 'union_456',
+      creatorUnionId: 'boss_union_001',
       subject: '完成Q2季度销售报告',
       dueTime: '2026-05-20',
     });
     expect(taskId).toBe('todo_abc123');
     expect(mockedAxios.post).toHaveBeenCalledWith(
-      'https://api.dingtalk.com/v1.0/todo/users/user_456/tasks',
+      'https://api.dingtalk.com/v1.0/todo/users/union_456/tasks',
       expect.objectContaining({
         subject: '完成Q2季度销售报告',
-        creatorId: 'boss_001',
-        executorIds: ['user_456'],
+        creatorId: 'boss_union_001',
+        executorIds: ['union_456'],
       }),
       expect.any(Object)
     );

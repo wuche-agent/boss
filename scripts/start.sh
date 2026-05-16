@@ -6,22 +6,18 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_DIR/.env"
 
 # All Hermes profiles
-HERMES_PROFILES="director intel copywriter designer pm videographer"
+HERMES_PROFILES="default athrun"
 
-# Preferred profile for the AI assistant (pm = project manager)
-PREFERRED_PROFILE="pm"
+# Preferred profile for the AI assistant
+PREFERRED_PROFILE="default"
 
 log() { echo "[start.sh] $*"; }
 err() { echo "[start.sh] ERROR: $*" >&2; }
 
 hermes_port() {
   case "$1" in
-    director)     echo 8642 ;;
-    intel)        echo 8643 ;;
-    copywriter)   echo 8644 ;;
-    designer)     echo 8645 ;;
-    pm)           echo 8647 ;;
-    videographer) echo 8648 ;;
+    default)  echo 8641 ;;
+    athrun)   echo 8642 ;;
     *) err "Unknown Hermes profile: $1"; exit 1 ;;
   esac
 }

@@ -4,7 +4,7 @@ dotenv.config();
 import { DWClient, DWClientDownStream, EventAck, TOPIC_ROBOT } from 'dingtalk-stream';
 import { isAuthorizedMessage, extractMessageText } from './router';
 import { getSession, setSession, clearSession, Session } from './conversation';
-import { conductConversation } from './llm';
+import { conductConversation, initLLM } from './llm';
 import { executeTask } from './executor';
 import { handleTodoComplete } from './events/todoComplete';
 import { sendMessage } from './dingtalk/message';
@@ -62,6 +62,7 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
           detail: task.detail,
           deadline: task.deadline,
           summary: task.summary,
+          notes: task.notes,
         });
         await clearSession(userId);
       } catch (err) {
@@ -108,10 +109,16 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
   await sendMessage(userId, reply);
 }
 
-client
-  .connect()
-  .then(() => console.log('DingTalk Stream client started successfully'))
+initLLM()
+  .then(() => client
+    .connect()
+    .then(() => console.log('DingTalk Stream client started successfully'))
+    .catch((err: Error) => {
+      console.error('Failed to start DingTalk Stream client:', err);
+      process.exit(1);
+    })
+  )
   .catch((err: Error) => {
-    console.error('Failed to start DingTalk Stream client:', err);
+    console.error(err.message);
     process.exit(1);
   });

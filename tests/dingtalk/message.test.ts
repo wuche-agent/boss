@@ -49,8 +49,15 @@ describe('sendCard', () => {
         userIds: ['user_123'],
         msgKey: 'sampleMarkdown',
         msgParam: JSON.stringify({
-          title: '你有一个新任务',
-          text: '### 你有一个新任务 📋\n**目标：** 提升销售效率\n**内容：** 完成Q2季度销售报告\n**截止日期：** 2026-05-18\n**来自：** 武彻',
+          title: '【新任务】提升销售效率',
+          text:
+            '## 【新任务】提升销售效率\n\n' +
+            '🎯 **目标：** 提升销售效率\n\n' +
+            '📝 **内容/要求：**\n\n' +
+            '完成Q2季度销售报告\n\n' +
+            '⏰ **截止/时间：**\n\n' +
+            '- 2026-05-18\n\n' +
+            '来源：武彻',
         }),
       },
       { headers: { 'x-acs-dingtalk-access-token': 'mock_token' } }

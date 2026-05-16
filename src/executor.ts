@@ -11,6 +11,7 @@ export interface TaskParams {
   detail: string;
   deadline: string;
   summary: string;
+  notes?: string;
 }
 
 export async function executeTask(params: TaskParams): Promise<void> {
@@ -29,6 +30,7 @@ export async function executeTask(params: TaskParams): Promise<void> {
     detail: params.detail,
     deadline: params.deadline,
     bossName: params.bossName,
+    notes: params.notes,
   });
 
   // 3) Create DingTalk todo (requires unionId)

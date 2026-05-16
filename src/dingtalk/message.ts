@@ -20,23 +20,27 @@ export interface TaskCard {
   detail: string;
   deadline: string;
   bossName: string;
+  notes?: string;
 }
 
 export async function sendCard(userId: string, card: TaskCard): Promise<void> {
   const token = await getAccessToken();
   const text =
-    `### 你有一个新任务 📋\n` +
-    `**目标：** ${card.goal}\n` +
-    `**内容：** ${card.detail}\n` +
-    `**截止日期：** ${card.deadline}\n` +
-    `**来自：** ${card.bossName}`;
+    `## 【新任务】${card.goal}\n\n` +
+    `🎯 **目标：** ${card.goal}\n\n` +
+    `📝 **内容/要求：**\n\n` +
+    `${card.detail}\n\n` +
+    `⏰ **截止/时间：**\n\n` +
+    `- ${card.deadline}\n\n` +
+    (card.notes ? `📊 **后续/备注：** ${card.notes}\n\n` : '') +
+    `来源：${card.bossName}`;
   await axios.post(
     'https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend',
     {
       robotCode: process.env.DINGTALK_ROBOT_CODE,
       userIds: [userId],
       msgKey: 'sampleMarkdown',
-      msgParam: JSON.stringify({ title: '你有一个新任务', text }),
+      msgParam: JSON.stringify({ title: `【新任务】${card.goal}`, text }),
     },
     { headers: { 'x-acs-dingtalk-access-token': token } }
   );

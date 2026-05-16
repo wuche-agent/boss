@@ -13,6 +13,7 @@ export interface PendingTask {
   deadline: string;
   detail: string;
   summary: string;
+  notes?: string;
 }
 
 export interface Session {

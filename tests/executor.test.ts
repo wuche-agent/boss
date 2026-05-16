@@ -1,12 +1,10 @@
 import { executeTask } from '../src/executor';
 import * as message from '../src/dingtalk/message';
 import * as todo from '../src/dingtalk/todo';
-import * as bitable from '../src/dingtalk/bitable';
 import * as user from '../src/dingtalk/user';
 
 jest.mock('../src/dingtalk/message');
 jest.mock('../src/dingtalk/todo');
-jest.mock('../src/dingtalk/bitable');
 jest.mock('../src/dingtalk/user');
 
 jest.mock('ioredis', () =>
@@ -28,16 +26,15 @@ jest.mock('ioredis', () =>
 
 const mockedMessage = message as jest.Mocked<typeof message>;
 const mockedTodo = todo as jest.Mocked<typeof todo>;
-const mockedBitable = bitable as jest.Mocked<typeof bitable>;
 const mockedUser = user as jest.Mocked<typeof user>;
 
 describe('executeTask', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (global as Record<string, unknown>).__ioredisStore = {};
-    mockedUser.searchUserByName.mockResolvedValue('staff_789');
+    mockedUser.searchUserByName.mockResolvedValue({ userId: 'staff_789', unionId: 'union_789' });
+    mockedUser.getUserUnionId.mockResolvedValue('boss_union_001');
     mockedTodo.createTodo.mockResolvedValue('todo_abc');
-    mockedBitable.insertTaskRecord.mockResolvedValue('row_xyz');
     mockedMessage.sendCard.mockResolvedValue(undefined);
     mockedMessage.sendMessage.mockResolvedValue(undefined);
   });
@@ -46,7 +43,7 @@ describe('executeTask', () => {
     delete (global as Record<string, unknown>).__ioredisStore;
   });
 
-  it('resolves staffId, sends card, creates todo, inserts bitable, stores redis, confirms boss', async () => {
+  it('resolves staffId, sends card, creates todo, stores redis, confirms boss', async () => {
     await executeTask({
       bossUserId: 'boss_001',
       bossName: '老板',
@@ -58,25 +55,26 @@ describe('executeTask', () => {
     });
 
     expect(mockedUser.searchUserByName).toHaveBeenCalledWith('小王');
+    expect(mockedUser.getUserUnionId).toHaveBeenCalledWith('boss_001');
 
     expect(mockedMessage.sendCard).toHaveBeenCalledWith('staff_789', {
       goal: '提升销售效率',
       detail: '完成Q2报告',
       deadline: '2026-05-20',
       bossName: '老板',
+      notes: undefined,
     });
 
-    expect(mockedTodo.createTodo).toHaveBeenCalledWith(
-      expect.objectContaining({ assigneeUserId: 'staff_789', subject: '完成Q2报告' })
-    );
-
-    expect(mockedBitable.insertTaskRecord).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: 'todo_abc', assigneeUserId: 'staff_789' })
-    );
+    expect(mockedTodo.createTodo).toHaveBeenCalledWith({
+      assigneeUnionId: 'union_789',
+      creatorUnionId: 'boss_union_001',
+      subject: '完成Q2报告',
+      dueTime: '2026-05-20',
+    });
 
     const redisStore = (global as Record<string, unknown>).__ioredisStore as Record<string, string>;
     expect(redisStore['todo:todo_abc']).toBe(
-      JSON.stringify({ rowId: 'row_xyz', bossUserId: 'boss_001', summary: '小王需在5月20日前完成Q2报告' })
+      JSON.stringify({ bossUserId: 'boss_001', summary: '小王需在5月20日前完成Q2报告' })
     );
 
     expect(mockedMessage.sendMessage).toHaveBeenCalledWith(
