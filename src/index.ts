@@ -8,6 +8,8 @@ import { conductConversation, initLLM } from './llm';
 import { executeTask } from './executor';
 import { handleTodoComplete } from './events/todoComplete';
 import { sendMessage } from './dingtalk/message';
+import { runInspectionQuery } from './inspection';
+import { registerSchedulers } from './jobs/scheduler';
 
 const TOPIC_TODO_FINISH = 'todo.task.finish';
 
@@ -58,11 +60,13 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
           bossUserId: userId,
           bossName: event.senderNick ?? '老板',
           assigneeName: task.assignee_name,
-          goal: task.goal,
+          title: task.title,
           detail: task.detail,
+          purpose: task.purpose,
+          deliverable: task.deliverable,
           deadline: task.deadline,
           summary: task.summary,
-          notes: task.notes,
+          rawIntent: task.raw_intent,
         });
         await clearSession(userId);
       } catch (err) {
@@ -96,8 +100,14 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
   // Drive conversation with LLM
   const updatedHistory = [...session.history, { role: 'user' as const, content: text }];
   console.log(`[llm] calling conductConversation, history length=${updatedHistory.length}`);
-  const { reply, task } = await conductConversation(updatedHistory);
+  const { reply, task, inspection } = await conductConversation(updatedHistory);
   console.log(`[llm] reply=${reply.slice(0, 80)} task=${task ? JSON.stringify(task) : 'none'}`);
+
+  if (inspection) {
+    const inspectionReply = await runInspectionQuery(inspection);
+    await sendMessage(userId, inspectionReply);
+    return;
+  }
 
   const newSession: Session = {
     step: task ? 'awaiting_confirm' : 'clarifying',
@@ -110,14 +120,17 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
 }
 
 initLLM()
-  .then(() => client
-    .connect()
-    .then(() => console.log('DingTalk Stream client started successfully'))
-    .catch((err: Error) => {
-      console.error('Failed to start DingTalk Stream client:', err);
-      process.exit(1);
-    })
-  )
+  .then(() => {
+    const bossUserIds = (process.env.BOSS_USER_IDS ?? '').split(',').filter(Boolean);
+    registerSchedulers(bossUserIds);
+    return client
+      .connect()
+      .then(() => console.log('DingTalk Stream client started successfully'))
+      .catch((err: Error) => {
+        console.error('Failed to start DingTalk Stream client:', err);
+        process.exit(1);
+      });
+  })
   .catch((err: Error) => {
     console.error(err.message);
     process.exit(1);
