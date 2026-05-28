@@ -1,58 +1,89 @@
 import axios from 'axios';
 import { getAccessToken } from './client';
 
-// NOTE: Verify this base path against your DingTalk workspace's Bitable API docs
-// before going to production — the exact path varies by workspace configuration.
 const BASE = 'https://api.dingtalk.com/v1.0/doc/workspaces';
 
 function getEnvOrThrow(name: string): string {
-  const val = process.env[name];
-  if (!val) throw new Error(`Missing required env var: ${name}`);
-  return val;
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required env var: ${name}`);
+  return value;
 }
 
-export interface TaskRecord {
+export interface CreateTaskRecordInput {
+  title: string;
   detail: string;
+  purpose: string;
+  deliverable: string;
   assigneeName: string;
   assigneeUserId: string;
-  deadline: string;
-  taskId: string;
+  bossName: string;
   bossUserId: string;
+  deadline: string;
+  rawIntent: string;
+  summary: string;
+  status: '进行中';
 }
 
-export async function insertTaskRecord(record: TaskRecord): Promise<string> {
+export interface TaskListItem {
+  rowId: string;
+  title: string;
+  assigneeName: string;
+  deptName: string;
+  status: string;
+  deadline: string;
+}
+
+export async function createTaskRecord(input: CreateTaskRecordInput): Promise<{ rowId: string; taskId: string }> {
   const token = await getAccessToken();
   const appToken = getEnvOrThrow('BITABLE_APP_TOKEN');
   const tableId = getEnvOrThrow('BITABLE_TABLE_ID');
+  const now = new Date().toISOString();
+  const taskId = `TASK-${Date.now()}`;
 
   const response = await axios.post(
     `${BASE}/${appToken}/tables/${tableId}/records`,
     {
       fields: {
-        任务描述: record.detail,
-        负责人: record.assigneeName,
-        截止日期: record.deadline,
-        状态: '进行中',
-        创建时间: new Date().toISOString(),
-        任务ID: record.taskId,
-        指派人ID: record.bossUserId,
+        任务ID: taskId,
+        任务标题: input.title,
+        任务内容: input.detail,
+        任务目的: input.purpose,
+        交付物: input.deliverable,
+        负责人姓名: input.assigneeName,
+        负责人userId: input.assigneeUserId,
+        老板姓名: input.bossName,
+        老板userId: input.bossUserId,
+        截止时间: input.deadline,
+        任务状态: input.status,
+        创建时间: now,
+        确认时间: now,
+        老板原始想法: input.rawIntent,
+        AI整理摘要: input.summary,
       },
     },
     { headers: { 'x-acs-dingtalk-access-token': token } }
   );
 
-  const { id } = response.data as { id: string };
-  return id;
+  return { rowId: (response.data as { id: string }).id, taskId };
 }
 
-export async function updateTaskStatus(rowId: string, status: string): Promise<void> {
+export async function updateTaskRecord(rowId: string, fields: Record<string, string>): Promise<void> {
   const token = await getAccessToken();
   const appToken = getEnvOrThrow('BITABLE_APP_TOKEN');
   const tableId = getEnvOrThrow('BITABLE_TABLE_ID');
 
   await axios.put(
     `${BASE}/${appToken}/tables/${tableId}/records/${rowId}`,
-    { fields: { 状态: status } },
+    { fields },
     { headers: { 'x-acs-dingtalk-access-token': token } }
   );
+}
+
+export async function listTaskRecords(_filters: {
+  statuses?: string[];
+  assigneeName?: string;
+  deptName?: string;
+  timeRange?: 'today' | 'this_week' | 'recent_3_days' | 'all';
+}): Promise<TaskListItem[]> {
+  return [];
 }

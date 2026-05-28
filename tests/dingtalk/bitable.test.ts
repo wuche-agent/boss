@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { insertTaskRecord, updateTaskStatus } from '../../src/dingtalk/bitable';
+import { createTaskRecord, updateTaskRecord } from '../../src/dingtalk/bitable';
 import * as client from '../../src/dingtalk/client';
 
 jest.mock('axios');
@@ -17,27 +17,44 @@ describe('bitable', () => {
     process.env.BITABLE_TABLE_ID = TABLE_ID;
   });
 
-  it('inserts a task record and returns rowId', async () => {
+  it('creates a task record and returns rowId plus taskId', async () => {
     mockedAxios.post.mockResolvedValue({ data: { id: 'row_xyz' } });
 
-    const rowId = await insertTaskRecord({
+    const result = await createTaskRecord({
+      title: 'Q2客户复盘报告',
       detail: '完成Q2报告',
+      purpose: '提升销售效率',
+      deliverable: '复盘文档',
       assigneeName: '小王',
       assigneeUserId: 'user_456',
+      bossName: '老板',
+      summary: '小王需在5月20日前完成Q2报告',
       deadline: '2026-05-20',
-      taskId: 'todo_abc123',
       bossUserId: 'boss_001',
+      rawIntent: '让小王完成Q2报告',
+      status: '进行中',
     });
-    expect(rowId).toBe('row_xyz');
+    expect(result.rowId).toBe('row_xyz');
+    expect(result.taskId).toContain('TASK-');
   });
 
-  it('updates a task record status to done', async () => {
+  it('updates a task record with todo metadata', async () => {
     mockedAxios.put.mockResolvedValue({ data: {} });
 
-    await updateTaskStatus('row_xyz', '已完成');
+    await updateTaskRecord('row_xyz', {
+      待办taskId: 'todo_abc',
+      负责人部门: '市场部',
+      派发时间: '2026-05-28T10:00:00.000Z',
+    });
     expect(mockedAxios.put).toHaveBeenCalledWith(
       expect.stringContaining('row_xyz'),
-      expect.objectContaining({ fields: { 状态: '已完成' } }),
+      {
+        fields: {
+          待办taskId: 'todo_abc',
+          负责人部门: '市场部',
+          派发时间: '2026-05-28T10:00:00.000Z',
+        },
+      },
       expect.any(Object)
     );
   });

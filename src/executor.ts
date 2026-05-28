@@ -1,80 +1,81 @@
 import { redis } from './redis';
 import { sendMessage, sendCard } from './dingtalk/message';
 import { createTodo } from './dingtalk/todo';
+import { createTaskRecord, updateTaskRecord } from './dingtalk/bitable';
 import { searchUserByName, getUserUnionId } from './dingtalk/user';
 
 export interface TaskParams {
   bossUserId: string;
   bossName: string;
   assigneeName: string;
-  goal: string;
+  title: string;
   detail: string;
+  purpose: string;
+  deliverable: string;
   deadline: string;
   summary: string;
-  notes?: string;
+  rawIntent: string;
 }
 
 export async function executeTask(params: TaskParams): Promise<void> {
-  // 1) Resolve assignee identifiers
-  const { userId: assigneeUserId, unionId: assigneeUnionId } = await searchUserByName(params.assigneeName);
-  console.log(`[executor] resolved ${params.assigneeName} → userId=${assigneeUserId} unionId=${assigneeUnionId}`);
+  const lookup = await searchUserByName(params.assigneeName);
+  if (lookup.kind === 'ambiguous') {
+    throw new Error(`找到多个同名用户"${params.assigneeName}"，请补充确认部门后再试`);
+  }
 
-  console.log('[executor] getting bossUnionId...');
-  const bossUnionId = await getUserUnionId(params.bossUserId);
-  console.log('[executor] bossUnionId:', bossUnionId);
+  const assignee = lookup.match;
+  const { rowId } = await createTaskRecord({
+    title: params.title,
+    detail: params.detail,
+    purpose: params.purpose,
+    deliverable: params.deliverable,
+    assigneeName: assignee.name,
+    assigneeUserId: assignee.userId,
+    bossName: params.bossName,
+    bossUserId: params.bossUserId,
+    deadline: params.deadline,
+    rawIntent: params.rawIntent,
+    summary: params.summary,
+    status: '进行中',
+  });
 
-  // 2) Send markdown card to assignee
-  console.log('[executor] sending card to', assigneeUserId);
-  await sendCard(assigneeUserId, {
-    goal: params.goal,
+  await sendCard(assignee.userId, {
+    goal: params.purpose,
     detail: params.detail,
     deadline: params.deadline,
     bossName: params.bossName,
-    notes: params.notes,
+    notes: `交付物：${params.deliverable}`,
   });
 
-  // 3) Create DingTalk todo (requires unionId)
-  const taskId = await createTodo({
-    assigneeUnionId,
+  const bossUnionId = await getUserUnionId(params.bossUserId);
+  const todoTaskId = await createTodo({
+    assigneeUnionId: assignee.unionId,
     creatorUnionId: bossUnionId,
-    subject: params.detail,
+    subject: params.title,
     dueTime: params.deadline,
   });
 
-  const TTL_30D = 30 * 24 * 60 * 60;
+  await updateTaskRecord(rowId, {
+    待办taskId: todoTaskId,
+    负责人部门: assignee.deptName,
+    派发时间: new Date().toISOString(),
+    最近一次状态更新时间: new Date().toISOString(),
+  });
 
-  // 4) Store full task record in Redis
   await redis.set(
-    `task:${taskId}`,
+    `todo:${todoTaskId}`,
     JSON.stringify({
-      taskId,
-      goal: params.goal,
-      detail: params.detail,
-      assigneeName: params.assigneeName,
-      assigneeUserId,
-      deadline: params.deadline,
+      rowId,
       bossUserId: params.bossUserId,
-      bossName: params.bossName,
-      status: '进行中',
-      createdAt: new Date().toISOString(),
       summary: params.summary,
+      title: params.title,
     }),
     'EX',
-    TTL_30D
+    30 * 24 * 60 * 60
   );
 
-  // 5) Store todo→task mapping for completion tracking
-  await redis.set(
-    `todo:${taskId}`,
-    JSON.stringify({ bossUserId: params.bossUserId, summary: params.summary }),
-    'EX',
-    TTL_30D
-  );
-
-  // 6) Confirm to boss
   await sendMessage(
     params.bossUserId,
-    `✅ 任务已创建并通知到${params.assigneeName}：\n${params.summary}`
+    `✅ 任务已创建并通知到${assignee.name}：\n${params.summary}`
   );
 }
-
