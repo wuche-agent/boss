@@ -73,6 +73,14 @@ export async function initLLM(): Promise<void> {
 export interface ConversationResult {
   reply: string;
   task?: PendingTask;
+  inspection?: InspectionQuery;
+}
+
+export interface InspectionQuery {
+  scope: 'status' | 'person' | 'department' | 'time';
+  target?: string;
+  status?: '进行中' | '已完成' | '已逾期';
+  timeRange?: 'today' | 'this_week' | 'recent_3_days' | 'all';
 }
 
 export async function conductConversation(
@@ -89,23 +97,39 @@ export async function conductConversation(
   });
 
   const content = response.choices[0]?.message?.content ?? '';
-  const marker = '<<<TASK_READY>>>';
+  const taskMarker = '<<<TASK_READY>>>';
+  const inspectionMarker = '<<<INSPECTION_QUERY>>>';
 
-  if (content.includes(marker)) {
-    const [prose, jsonPart] = content.split(marker);
+  if (content.includes(taskMarker)) {
+    const [prose, jsonPart] = content.split(taskMarker);
     try {
       const task = JSON.parse(jsonPart.trim()) as PendingTask;
       const confirmText =
         (prose.trim() ? prose.trim() + '\n\n' : '') +
         `---\n` +
         `📋 任务方案\n` +
-        `目标：${task.goal}\n` +
+        `标题：${task.title}\n` +
         `负责人：${task.assignee_name}\n` +
         `截止：${task.deadline}\n` +
         `内容：${task.detail}\n` +
+        `目的：${task.purpose}\n` +
+        `交付物：${task.deliverable}\n` +
         (task.notes ? `备注：${task.notes}\n` : '') +
         `\n回复"确认"完成创建，或继续补充调整。`;
       return { reply: confirmText, task };
+    } catch {
+      // JSON parse failed — treat as normal reply
+    }
+  }
+
+  if (content.includes(inspectionMarker)) {
+    const [prose, jsonPart] = content.split(inspectionMarker);
+    try {
+      const inspection = JSON.parse(jsonPart.trim()) as InspectionQuery;
+      return {
+        reply: prose.trim() || '我来查一下。',
+        inspection,
+      };
     } catch {
       // JSON parse failed — treat as normal reply
     }

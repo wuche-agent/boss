@@ -8,18 +8,32 @@ export interface ConversationTurn {
 }
 
 export interface PendingTask {
-  goal: string;
+  title: string;
   assignee_name: string;
   deadline: string;
   detail: string;
+  purpose: string;
+  deliverable: string;
   summary: string;
+  raw_intent: string;
   notes?: string;
+}
+
+export interface PendingAssigneeSelection {
+  originalName: string;
+  candidates: Array<{
+    userId: string;
+    unionId: string;
+    name: string;
+    deptName: string;
+  }>;
 }
 
 export interface Session {
   step: SessionStep;
   history: ConversationTurn[];
   pending_task?: PendingTask;
+  pending_assignee_selection?: PendingAssigneeSelection;
 }
 
 const SESSION_TTL = 30 * 60;

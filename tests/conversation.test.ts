@@ -35,16 +35,22 @@ describe('conversation', () => {
       step: 'awaiting_confirm',
       history: [],
       pending_task: {
-        goal: '提升销售效率',
+        title: 'Q2客户复盘报告',
         assignee_name: '小王',
-        deadline: '2026-05-20',
-        detail: '完成Q2季度销售报告',
-        summary: '小王负责Q2销售报告，截止5月20日',
+        deadline: '2026-05-20 18:00',
+        detail: '整理Q2客户复盘报告',
+        purpose: '为经营复盘会准备决策材料',
+        deliverable: '一份复盘文档 + 关键问题清单',
+        summary: '小王在5月20日18:00前提交Q2客户复盘报告',
+        raw_intent: '让小王下周前把客户复盘整理出来',
       },
     };
     await setSession('user_2', session);
     const retrieved = await getSession('user_2');
     expect(retrieved?.pending_task?.assignee_name).toBe('小王');
+    expect(retrieved?.pending_task?.purpose).toBe('为经营复盘会准备决策材料');
+    expect(retrieved?.pending_task?.deliverable).toBe('一份复盘文档 + 关键问题清单');
+    expect(retrieved?.pending_task?.raw_intent).toContain('客户复盘');
   });
 
   it('clears a session', async () => {
