@@ -85,5 +85,30 @@ export async function listTaskRecords(_filters: {
   deptName?: string;
   timeRange?: 'today' | 'this_week' | 'recent_3_days' | 'all';
 }): Promise<TaskListItem[]> {
-  return [];
+  const token = await getAccessToken();
+  const appToken = getEnvOrThrow('BITABLE_APP_TOKEN');
+  const tableId = getEnvOrThrow('BITABLE_TABLE_ID');
+
+  const response = await axios.get(
+    `${BASE}/${appToken}/tables/${tableId}/records`,
+    { headers: { 'x-acs-dingtalk-access-token': token } }
+  );
+
+  const filters = _filters;
+  const items = ((response.data as { items?: Array<{ id: string; fields: Record<string, string> }> }).items ?? [])
+    .map(item => ({
+      rowId: item.id,
+      title: item.fields['任务标题'],
+      assigneeName: item.fields['负责人姓名'],
+      deptName: item.fields['负责人部门'] ?? '',
+      status: item.fields['任务状态'],
+      deadline: item.fields['截止时间'],
+    }));
+
+  return items.filter(item => {
+    if (filters.statuses && !filters.statuses.includes(item.status)) return false;
+    if (filters.assigneeName && item.assigneeName !== filters.assigneeName) return false;
+    if (filters.deptName && item.deptName !== filters.deptName) return false;
+    return true;
+  });
 }
