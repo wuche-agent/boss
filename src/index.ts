@@ -27,6 +27,7 @@ import {
   runKnowledgeSearch,
   saveManualKnowledge,
 } from './aios/core';
+import { auditStreamEvent } from './aios/audit';
 
 const TOPIC_TODO_FINISH = 'todo.task.finish';
 
@@ -36,11 +37,23 @@ const client = new DWClient({
 });
 
 client.registerCallbackListener(TOPIC_ROBOT, (msg: DWClientDownStream) => {
+  auditStreamEvent({
+    topic: TOPIC_ROBOT,
+    messageId: msg.headers.messageId,
+    headers: msg.headers,
+    data: msg.data,
+  });
   client.socketCallBackResponse(msg.headers.messageId, { status: EventAck.SUCCESS });
   handleRobotMessage(msg).catch(console.error);
 });
 
 client.registerAllEventListener((msg: DWClientDownStream) => {
+  auditStreamEvent({
+    topic: msg.headers.topic,
+    messageId: msg.headers.messageId,
+    headers: msg.headers,
+    data: msg.data,
+  });
   if (msg.headers.topic === TOPIC_TODO_FINISH) {
     const event = JSON.parse(msg.data) as Record<string, unknown>;
     handleTodoComplete(event).catch(console.error);
@@ -68,7 +81,7 @@ async function replyToUser(userId: string, content: string): Promise<void> {
 async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
   const event = JSON.parse(msg.data) as RobotMessageEvent;
   const userId = event.senderStaffId ?? event.senderId ?? '';
-  console.log(`[robot] staffId=${event.senderStaffId} nick=${event.senderNick} text=${event.text?.content}`);
+  console.log(`[robot] type=${event.msgtype ?? 'unknown'} staffId=${event.senderStaffId} nick=${event.senderNick} text=${event.text?.content}`);
 
   if (!isAuthorizedMessage(event) || !userId) return;
 
