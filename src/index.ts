@@ -100,22 +100,6 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
   const existingSession = await getSession(userId);
   const fileInfo = extractDingTalkFileInfo(event);
 
-  if (command.type === 'help') {
-    await replyToUser(userId, buildHelpText());
-    return;
-  }
-
-  if (command.type === 'cancel') {
-    await clearSession(userId);
-    await replyToUser(userId, '好的，当前流程已取消。新内容我会继续收入 AI 收件箱。');
-    return;
-  }
-
-  if (existingSession) {
-    await handleTaskConversation(userId, event, text, existingSession);
-    return;
-  }
-
   if (fileInfo) {
     const pending = registerFileMetadata({
       sourceMessageId: incoming.id,
@@ -163,6 +147,22 @@ async function handleRobotMessage(msg: DWClientDownStream): Promise<void> {
       });
       await replyToUser(userId, `我识别到了文件，但下载失败：${message}`);
     }
+    return;
+  }
+
+  if (command.type === 'help') {
+    await replyToUser(userId, buildHelpText());
+    return;
+  }
+
+  if (command.type === 'cancel') {
+    await clearSession(userId);
+    await replyToUser(userId, '好的，当前流程已取消。新内容我会继续收入 AI 收件箱。');
+    return;
+  }
+
+  if (existingSession) {
+    await handleTaskConversation(userId, event, text, existingSession);
     return;
   }
 
