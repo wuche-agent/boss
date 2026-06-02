@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { redis } from './redis';
 import { classifyInboxText, fallbackInboxClassification } from './llm';
 import type { InboxClassification } from './llm';
+import { createKnowledgeFromClassification } from './aios/core';
+import type { StoredKnowledgeItem } from './aios/store';
 
 export interface InboxItem extends InboxClassification {
   id: string;
@@ -9,12 +11,16 @@ export interface InboxItem extends InboxClassification {
   content: string;
   source: 'dingtalk';
   senderNick?: string;
+  sourceMessageId?: string;
+  knowledgeItemId?: string;
   createdAt: string;
   createdAtMs: number;
 }
 
 export interface InboxMeta {
   senderNick?: string;
+  sourceMessageId?: string;
+  sourceType?: StoredKnowledgeItem['sourceType'];
 }
 
 const DEFAULT_TTL_DAYS = 180;
@@ -61,9 +67,18 @@ export async function captureInboxItem(
     content,
     source: 'dingtalk',
     senderNick: meta.senderNick,
+    sourceMessageId: meta.sourceMessageId,
     createdAt: now.toISOString(),
     createdAtMs: now.getTime(),
   };
+
+  const knowledge = createKnowledgeFromClassification({
+    sourceMessageId: meta.sourceMessageId,
+    content,
+    classification,
+    sourceType: meta.sourceType ?? 'message',
+  });
+  item.knowledgeItemId = knowledge.id;
 
   const ttl = inboxTtlSeconds();
   await redis.set(inboxItemKey(userId, item.id), JSON.stringify(item), 'EX', ttl);
@@ -124,10 +139,15 @@ export function buildHelpText(): string {
   return [
     '个人 AI 系统已在线。你可以这样用：',
     '',
-    '直接发内容：存进 AI 收件箱并自动分类',
+    '直接发内容：存进 AI 收件箱和本地知识库',
     '/ask 问题：基于最近记录检索回答',
+    '/search 关键词：搜索 Mac mini 本地知识库',
+    '/save 内容：明确保存一条知识',
     '/recent 10：查看最近 10 条记录',
     '/today：查看今日摘要',
+    '/todo 内容：保存一条待办',
+    '/file：查看最近保存的文件',
+    '/code 内容：保存代码任务入口',
     '/task 交办内容：进入钉钉任务交办流程',
     '取消：退出当前任务确认或澄清流程',
   ].join('\n');

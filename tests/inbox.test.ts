@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import {
   captureInboxItem,
   formatInboxList,
@@ -5,6 +8,7 @@ import {
   getRecentInboxItems,
 } from '../src/inbox';
 import * as llm from '../src/llm';
+import { _resetDbForTesting } from '../src/aios/store';
 
 const store: Record<string, string> = {};
 const sortedSets: Record<string, Array<{ score: number; member: string }>> = {};
@@ -45,7 +49,12 @@ jest.mock('../src/llm', () => ({
 const mockedLlm = llm as jest.Mocked<typeof llm>;
 
 describe('inbox', () => {
+  let aiosRoot: string;
+
   beforeEach(() => {
+    aiosRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-aios-test-'));
+    process.env.AIOS_ROOT = aiosRoot;
+    _resetDbForTesting();
     Object.keys(store).forEach(key => delete store[key]);
     Object.keys(sortedSets).forEach(key => delete sortedSets[key]);
     jest.clearAllMocks();
@@ -57,6 +66,12 @@ describe('inbox', () => {
       due_date: '2026-06-08',
       importance: 'high',
     });
+  });
+
+  afterEach(() => {
+    _resetDbForTesting();
+    delete process.env.AIOS_ROOT;
+    fs.rmSync(aiosRoot, { recursive: true, force: true });
   });
 
   it('captures a DingTalk message into the inbox', async () => {

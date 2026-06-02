@@ -18,6 +18,29 @@ describe('commands', () => {
     });
   });
 
+  it('parses AI OS knowledge commands', () => {
+    expect(parseCommand('/search 客户复盘')).toEqual({
+      type: 'search',
+      query: '客户复盘',
+    });
+    expect(parseCommand('/save 重要信息')).toEqual({
+      type: 'save',
+      text: '重要信息',
+    });
+    expect(parseCommand('/todo 明天联系张三')).toEqual({
+      type: 'todo',
+      text: '明天联系张三',
+    });
+    expect(parseCommand('/file')).toEqual({
+      type: 'file',
+      text: '',
+    });
+    expect(parseCommand('/code 修复报错')).toEqual({
+      type: 'code',
+      text: '修复报错',
+    });
+  });
+
   it('parses task commands', () => {
     expect(parseCommand('/task 让小王明天交报告')).toEqual({
       type: 'task',
@@ -36,4 +59,3 @@ describe('commands', () => {
     });
   });
 });
-

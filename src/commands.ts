@@ -3,6 +3,11 @@ export type ParsedCommand =
   | { type: 'recent'; limit: number }
   | { type: 'today' }
   | { type: 'ask'; question: string }
+  | { type: 'search'; query: string }
+  | { type: 'save'; text: string }
+  | { type: 'todo'; text: string }
+  | { type: 'file'; text: string }
+  | { type: 'code'; text: string }
   | { type: 'task'; text: string }
   | { type: 'cancel' }
   | { type: 'capture'; text: string };
@@ -50,9 +55,23 @@ export function parseCommand(text: string): ParsedCommand {
   const askRest = stripPrefix(normalized, ['/ask', 'ask', '问', '查询', '检索']);
   if (askRest !== null && askRest) return { type: 'ask', question: askRest };
 
+  const searchRest = stripPrefix(normalized, ['/search', 'search', '搜索', '查找']);
+  if (searchRest !== null) return { type: 'search', query: searchRest };
+
+  const saveRest = stripPrefix(normalized, ['/save', 'save', '保存', '记录']);
+  if (saveRest !== null) return { type: 'save', text: saveRest };
+
+  const todoRest = stripPrefix(normalized, ['/todo', 'todo', '待办', '提醒']);
+  if (todoRest !== null) return { type: 'todo', text: todoRest };
+
+  const fileRest = stripPrefix(normalized, ['/file', 'file', '文件']);
+  if (fileRest !== null) return { type: 'file', text: fileRest };
+
+  const codeRest = stripPrefix(normalized, ['/code', 'code', '代码']);
+  if (codeRest !== null) return { type: 'code', text: codeRest };
+
   const taskRest = stripPrefix(normalized, ['/task', '/delegate', 'task', 'delegate', '交办', '派活', '安排']);
   if (taskRest !== null) return { type: 'task', text: taskRest };
 
   return { type: 'capture', text: normalized };
 }
-

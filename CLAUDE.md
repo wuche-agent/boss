@@ -35,6 +35,7 @@ Copy `.env.example` to `.env`. Key variables:
 | `HERMES_MODEL` | Model name passed to the LLM API |
 | `HERMES_API_KEY` | API key for Hermes (not in `.env.example`; set by `setup-hermes-env.py`) |
 | `REDIS_URL` | Redis connection string |
+| `AIOS_ROOT` | Mac mini local AI OS data root; defaults to `~/AI-OS` |
 | `INBOX_TTL_DAYS` | Retention period for personal AI inbox records |
 | `BITABLE_APP_TOKEN` / `BITABLE_TABLE_ID` | DingTalk Bitable table for task records |
 
@@ -48,11 +49,12 @@ The bot is a **DingTalk Stream** long-poll client (no webhook server needed). It
 ### Conversation flow
 
 1. **`router.ts`** — gates every message: checks `BOSS_USER_IDS` whitelist; in group chats only passes @-mentions.
-2. **`commands.ts`** — maps text to high-level actions: help, inbox capture, recent/today views, inbox Q&A, or task delegation.
-3. **`inbox.ts`** — stores ordinary DingTalk messages as Redis-backed personal AI inbox records. Records are LLM-classified and indexed by user.
-4. **`conversation.ts`** — manages task-delegation session state in Redis (30-min TTL). States: `clarifying` → `awaiting_confirm` → (cleared on completion). A session holds the full conversation history and an optional `PendingTask`.
-5. **`llm.ts`** — calls the Hermes LLM (OpenAI-compatible) for task clarification, inbox classification, and inbox Q&A. For task delegation, when the model has gathered enough information it appends `<<<TASK_READY>>>` followed by a JSON blob; `conductConversation` splits on this marker to extract the structured task.
-6. **`executor.ts`** — triggered after the boss confirms. Orchestrates five sequential steps:
+2. **`commands.ts`** — maps text to high-level actions: help, save/search/file/todo/code, inbox capture, recent/today views, inbox Q&A, or task delegation.
+3. **`aios/`** — owns the Mac mini local AI OS data root. It creates `~/AI-OS`, stores long-term SQLite records (`messages`, `knowledge_items`, `files`), and formats knowledge/file search results.
+4. **`inbox.ts`** — stores ordinary DingTalk messages as Redis-backed personal AI inbox records and mirrors them into long-term AI OS knowledge records. Redis remains a short-term index/cache.
+5. **`conversation.ts`** — manages task-delegation session state in Redis (30-min TTL). States: `clarifying` → `awaiting_confirm` → (cleared on completion). A session holds the full conversation history and an optional `PendingTask`.
+6. **`llm.ts`** — calls the Hermes LLM (OpenAI-compatible) for task clarification, inbox classification, and inbox Q&A. For task delegation, when the model has gathered enough information it appends `<<<TASK_READY>>>` followed by a JSON blob; `conductConversation` splits on this marker to extract the structured task.
+7. **`executor.ts`** — triggered after the boss confirms. Orchestrates five sequential steps:
    1. Resolve assignee staffId by name via DingTalk contact search (`dingtalk/user.ts`)
    2. Send a markdown card to the assignee (`dingtalk/message.ts:sendCard`)
    3. Create a DingTalk todo task (`dingtalk/todo.ts`)
